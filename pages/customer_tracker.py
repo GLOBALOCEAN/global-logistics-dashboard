@@ -9,54 +9,55 @@ import io
 st.title("Generate Customer-Specific Tracker")
 
 st.markdown("""
-**Instructions:**
-1. Upload your LCL or FCL tracker Excel file (the full one from SharePoint)
-2. Select the column that contains customer/consignee names
-3. Choose the customer
-4. Select tracker type for the title
-5. Click Generate — download the formatted single-customer tracker
+**How to use this page:**
+- Upload your full LCL or FCL tracker Excel file (from SharePoint)
+- Choose the column with customer/consignee names
+- Select the customer you want
+- Choose tracker type for the title
+- Click Generate — it downloads a formatted single-customer version
 """)
 
 uploaded_file = st.file_uploader(
-    "Upload LCL or FCL Tracker Excel",
+    "Upload LCL or FCL Tracker Excel File",
     type=["xlsx", "xls"],
-    help="Drag & drop or click to browse. This replaces local file reading."
+    help="This is the full tracker file you normally open from SharePoint"
 )
 
 if uploaded_file is not None:
     try:
         df = pd.read_excel(uploaded_file)
-        st.success("File uploaded and loaded!")
+        st.success("File uploaded and read successfully!")
     except Exception as e:
         st.error(f"Error reading uploaded file: {e}")
         st.stop()
 
-    # Choose consignee column
+    # Column selection
     consignee_col = st.selectbox(
-        "Consignee/Customer Column",
+        "Consignee / Customer Column",
         options=list(df.columns),
-        index=list(df.columns).index("Consignee") if "Consignee" in df.columns else 0
+        index=list(df.columns).index("Consignee") if "Consignee" in df.columns else 0,
+        help="Select the column containing customer names"
     )
 
     if consignee_col not in df.columns:
-        st.error(f"Column '{consignee_col}' not found in file.")
+        st.error(f"Column '{consignee_col}' not found in uploaded file.")
     else:
         customers = sorted(df[consignee_col].dropna().unique().tolist())
         if not customers:
-            st.warning("No customers found in selected column.")
+            st.warning("No customer names found in the selected column.")
         else:
             customer_name = st.selectbox("Select Customer", customers)
 
             tracker_type = st.selectbox("Tracker Type (for title)", ["LCL", "FCL"])
 
             if st.button("Generate & Download", type="primary"):
-                with st.spinner("Generating..."):
+                with st.spinner("Creating formatted tracker..."):
                     filtered = df[df[consignee_col].astype(str).str.contains(customer_name, case=False, na=False)]
 
                     if filtered.empty:
-                        st.error(f"No rows for '{customer_name}'")
+                        st.error(f"No rows found for '{customer_name}'")
                     else:
-                        st.success(f"Found {len(filtered)} rows")
+                        st.success(f"Found {len(filtered)} rows – formatting...")
 
                         wb = Workbook()
                         ws = wb.active
@@ -111,7 +112,7 @@ if uploaded_file is not None:
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                         )
 else:
-    st.info("Upload your tracker Excel file to begin.")
+    st.info("Upload your tracker file to start.")
 
 if st.button("← Back to Home"):
     st.switch_page("../dashboard.py")
