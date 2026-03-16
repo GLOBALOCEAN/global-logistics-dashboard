@@ -1,4 +1,3 @@
-```python
 import streamlit as st
 import pandas as pd
 from datetime import datetime
@@ -11,6 +10,7 @@ import io
 # Password Protection
 # ────────────────────────────────────────────────
 def check_password():
+
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
 
@@ -25,7 +25,7 @@ def check_password():
     if st.button("Login"):
         if username == "GLOBAL" and password == "Global123!":
             st.session_state.authenticated = True
-            st.success("Logged in successfully!")
+            st.success("Login successful")
             st.rerun()
         else:
             st.error("Incorrect username or password")
@@ -38,7 +38,7 @@ if not check_password():
 
 
 # ────────────────────────────────────────────────
-# Page Configuration
+# Page Config
 # ────────────────────────────────────────────────
 st.set_page_config(
     page_title="Global Ocean Logistics Dashboard",
@@ -50,11 +50,17 @@ st.set_page_config(
 # ────────────────────────────────────────────────
 # Styling
 # ────────────────────────────────────────────────
-st.markdown("""
+st.markdown(
+"""
 <style>
-.stApp { background-color: #f8f9fa; }
 
-h1, h2, h3 { color: #015486 !important; }
+.stApp {
+    background-color: #f8f9fa;
+}
+
+h1, h2, h3 {
+    color: #015486 !important;
+}
 
 .stButton > button {
     background-color: #015486;
@@ -67,20 +73,20 @@ h1, h2, h3 { color: #015486 !important; }
     background-color: #8fd8ff;
     color: #015486;
 }
+
 </style>
-""", unsafe_allow_html=True)
+""",
+unsafe_allow_html=True
+)
 
 
 # ────────────────────────────────────────────────
-# Session State Navigation
+# Navigation
 # ────────────────────────────────────────────────
 if "page" not in st.session_state:
     st.session_state.page = "home"
 
 
-# ────────────────────────────────────────────────
-# Sidebar
-# ────────────────────────────────────────────────
 with st.sidebar:
 
     st.markdown("<h2 style='color:#015486;'>Global Ocean Logistics</h2>", unsafe_allow_html=True)
@@ -108,7 +114,7 @@ with st.sidebar:
 if st.session_state.page == "home":
 
     st.title("Global Ocean Logistics Dashboard")
-    st.markdown("Select a tool below")
+    st.write("Select a tool below")
 
     col1, col2, col3 = st.columns(3)
 
@@ -134,9 +140,8 @@ if st.session_state.page == "home":
 elif st.session_state.page == "live_sheets":
 
     st.title("Global Live Sheets")
-    st.markdown("Open a tracker in a new tab")
 
-    tracker_links = {
+    trackers = {
         "FCL Tracker":
         "https://netorgft11291460.sharepoint.com/:x:/r/sites/GlobalSharePoint/_layouts/15/Doc.aspx?sourcedoc=%7B27131CEF-29EA-4236-BF36-A3CF8D102D1D%7D",
 
@@ -147,13 +152,13 @@ elif st.session_state.page == "live_sheets":
         "https://netorgft11291460.sharepoint.com/:x:/r/sites/GlobalSharePoint/_layouts/15/Doc.aspx?sourcedoc=%7B587EDE6D-9415-42EF-9C11-01459CB389F5%7D"
     }
 
-    selected = st.selectbox("Select Tracker", list(tracker_links.keys()))
+    selected = st.selectbox("Choose tracker", list(trackers.keys()))
 
     if st.button("Open Tracker", type="primary"):
-        url = tracker_links[selected]
-        st.markdown(f'<a href="{url}" target="_blank">Click here to open</a>', unsafe_allow_html=True)
+        url = trackers[selected]
+        st.markdown(f'<a href="{url}" target="_blank">Open {selected}</a>', unsafe_allow_html=True)
 
-    if st.button("← Back to Home"):
+    if st.button("← Back"):
         st.session_state.page = "home"
         st.rerun()
 
@@ -166,7 +171,7 @@ elif st.session_state.page == "mawb":
     st.title("MAWB Tracker")
     st.info("Insert your MAWB tracker code here")
 
-    if st.button("← Back to Home"):
+    if st.button("← Back"):
         st.session_state.page = "home"
         st.rerun()
 
@@ -176,33 +181,30 @@ elif st.session_state.page == "mawb":
 # ────────────────────────────────────────────────
 elif st.session_state.page == "customer_tracker":
 
-    st.title("Generate Customer-Specific Tracker")
-
-    st.markdown("""
-Upload your **FCL or LCL tracker file**, choose the **customer**, and download a **filtered tracker**.
-""")
+    st.title("Generate Customer Tracker")
 
     uploaded_file = st.file_uploader(
-        "Upload Tracker Excel File",
+        "Upload FCL or LCL Tracker",
         type=["xlsx"]
     )
 
     if uploaded_file:
 
         df = pd.read_excel(uploaded_file)
-        df.columns = df.columns.str.strip()
 
         st.subheader("Preview")
         st.dataframe(df.head())
 
-        consignee_col = st.selectbox(
-            "Select Consignee / Customer Column",
+        df.columns = df.columns.str.strip()
+
+        customer_column = st.selectbox(
+            "Select Customer Column",
             df.columns
         )
 
-        customers = sorted(df[consignee_col].dropna().astype(str).unique())
+        customers = sorted(df[customer_column].dropna().astype(str).unique())
 
-        customer_name = st.selectbox(
+        selected_customer = st.selectbox(
             "Select Customer",
             customers
         )
@@ -212,23 +214,24 @@ Upload your **FCL or LCL tracker file**, choose the **customer**, and download a
             ["FCL", "LCL"]
         )
 
-        if st.button("Generate & Download Tracker", type="primary"):
+        if st.button("Generate Tracker", type="primary"):
 
             filtered = df[
-                df[consignee_col]
+                df[customer_column]
                 .astype(str)
-                .str.contains(customer_name, case=False, na=False)
+                .str.contains(selected_customer, case=False, na=False)
             ]
 
             if filtered.empty:
-                st.error("No rows found")
+
+                st.error("No records found")
 
             else:
 
                 wb = Workbook()
                 ws = wb.active
 
-                title = f"MY LIFE BATHROOM {tracker_type} FREIGHT TRACKER"
+                title = f"{selected_customer} {tracker_type} Freight Tracker"
 
                 last_col = get_column_letter(len(filtered.columns))
                 ws.merge_cells(f"A1:{last_col}1")
@@ -253,17 +256,14 @@ Upload your **FCL or LCL tracker file**, choose the **customer**, and download a
                 output.seek(0)
 
                 today = datetime.now().strftime("%Y-%m-%d")
-                safe_name = customer_name.replace(" ", "_")
-
-                filename = f"{tracker_type}_Tracker_{safe_name}_{today}.xlsx"
+                filename = f"{tracker_type}_{selected_customer}_{today}.xlsx"
 
                 st.download_button(
-                    label="Download Tracker",
+                    "Download Tracker",
                     data=output,
                     file_name=filename
                 )
 
-    if st.button("← Back to Home"):
+    if st.button("← Back"):
         st.session_state.page = "home"
         st.rerun()
-```
