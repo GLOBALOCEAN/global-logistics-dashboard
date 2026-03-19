@@ -7,10 +7,11 @@ from openpyxl.utils import get_column_letter
 import io
 
 # ────────────────────────────────────────────────
-# PROTECT PAGE (REQUIRES LOGIN FROM DASHBOARD)
+# AUTH CHECK (REDIRECT IF NOT LOGGED IN)
 # ────────────────────────────────────────────────
 if "authenticated" not in st.session_state or not st.session_state.authenticated:
-    st.warning("Please login from the main dashboard.")
+    st.warning("Redirecting to login...")
+    st.switch_page("dashboard.py")
     st.stop()
 
 # ────────────────────────────────────────────────
@@ -59,7 +60,7 @@ if uploaded_file:
     )
 
     # ────────────────────────────────────────────────
-    # STATUS FILTER
+    # STATUS CHECK + FILTER
     # ────────────────────────────────────────────────
     if "Status" not in df.columns:
         st.error("No 'Status' column found in file.")
@@ -117,7 +118,7 @@ if uploaded_file:
             cell.fill = PatternFill(start_color="005566", fill_type="solid")
             cell.alignment = Alignment(horizontal="center", vertical="center")
 
-            # Timestamp
+            # Info rows
             ws["A2"] = f"Customer: {selected_customer}"
             ws["A3"] = f"Generated: {datetime.now().strftime('%d %B %Y %H:%M')}"
 
@@ -146,13 +147,13 @@ if uploaded_file:
 
             for row_num, row_data in enumerate(filtered.itertuples(index=False), 6):
 
-                status_value = str(row_data[status_index])
+                status_value = str(row_data[status_index]).strip()
 
                 for col_num, value in enumerate(row_data, 1):
 
                     cell = ws.cell(row=row_num, column=col_num, value=value)
 
-                    # Colour rows based on status
+                    # Colour based on status
                     if status_value == "In Transit":
                         cell.fill = PatternFill(start_color="C6EFCE", fill_type="solid")
 
