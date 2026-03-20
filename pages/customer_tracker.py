@@ -2,7 +2,8 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from openpyxl import Workbook
-from openpyxl.styles import PatternFill
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 import io
 
 # ────────────────────────────────────────────────
@@ -14,8 +15,6 @@ if "authenticated" not in st.session_state or not st.session_state.authenticated
 
 st.title("📄 Multi-Tracker Customer Report")
 
-st.markdown("Upload FCL, LCL and AIR trackers to generate one combined customer report.")
-
 # ────────────────────────────────────────────────
 # FILE UPLOADS
 # ────────────────────────────────────────────────
@@ -23,9 +22,6 @@ fcl_file = st.file_uploader("Upload FCL Tracker", type=["xlsx"])
 lcl_file = st.file_uploader("Upload LCL Tracker", type=["xlsx"])
 air_file = st.file_uploader("Upload AIR Tracker", type=["xlsx"])
 
-# ────────────────────────────────────────────────
-# LOAD DATA
-# ────────────────────────────────────────────────
 dfs = {}
 
 if fcl_file:
@@ -43,9 +39,6 @@ if dfs:
     for key in dfs:
         dfs[key].columns = dfs[key].columns.str.strip()
 
-    # ────────────────────────────────────────────────
-    # CUSTOMER COLUMN SELECTION
-    # ────────────────────────────────────────────────
     sample_df = list(dfs.values())[0]
 
     customer_column = st.selectbox(
@@ -53,26 +46,24 @@ if dfs:
         sample_df.columns
     )
 
-    # Combine customers from all files
+    # Combine customers
     all_customers = set()
-
     for df in dfs.values():
         if customer_column in df.columns:
-            all_customers.update(df[customer_column].dropna().astype(str).unique())
+            all_customers.update(
+                df[customer_column].dropna().astype(str).str.strip().unique()
+            )
 
     selected_customer = st.selectbox(
         "Select Customer",
         sorted(all_customers)
     )
 
-    # ────────────────────────────────────────────────
-    # STATUS FILTER (ONLY IF EXISTS)
-    # ────────────────────────────────────────────────
+    # Status filter
     status_options = []
-
     for df in dfs.values():
         if "Status" in df.columns:
-            status_options.extend(df["Status"].dropna().astype(str).unique())
+            status_options.extend(df["Status"].dropna().astype(str).str.strip().unique())
 
     status_options = sorted(set(status_options))
 
@@ -95,33 +86,64 @@ if dfs:
             if customer_column not in df.columns:
                 continue
 
-            # Filter by customer
+            # CLEAN DATA
+            df[customer_column] = df[customer_column].astype(str).str.strip()
+
+            # FILTER CUSTOMER
             filtered = df[
                 df[customer_column]
-                .astype(str)
                 .str.contains(selected_customer, case=False, na=False)
             ]
 
-            # Apply status filter if column exists
+            # STATUS FILTER (only if exists)
             if "Status" in df.columns:
+                df["Status"] = df["Status"].astype(str).str.strip()
                 filtered = filtered[filtered["Status"].isin(selected_status)]
 
             if filtered.empty:
                 continue
 
+            # CREATE SHEET
             ws = wb.create_sheet(title=name)
 
-            # Headers
-            for col_num, col_name in enumerate(filtered.columns, 1):
-                ws.cell(row=1, column=col_num, value=col_name)
+            # TITLE
+            title = f"GLOBAL OCEAN LOGISTICS - {name} SHIPMENT TRACKER"
+            last_col = get_column_letter(len(filtered.columns))
 
-            # Status column index (if exists)
+            ws.merge_cells(f"A1:{last_col}1")
+
+            cell = ws["A1"]
+            cell.value = title
+            cell.font = Font(bold=True, size=16, color="FFFFFF")
+            cell.fill = PatternFill(start_color="005566", fill_type="solid")
+            cell.alignment = Alignment(horizontal="center")
+
+            # INFO ROWS
+            ws["A2"] = f"Customer: {selected_customer}"
+            ws["A3"] = f"Generated: {datetime.now().strftime('%d %B %Y %H:%M')}"
+
+            # HEADERS
+            headers = list(filtered.columns)
+
+            for col_num, header in enumerate(headers, 1):
+                cell = ws.cell(row=5, column=col_num, value=header)
+
+                cell.font = Font(bold=True, color="FFFFFF")
+                cell.fill = PatternFill(start_color="005566", fill_type="solid")
+                cell.alignment = Alignment(horizontal="center", wrap_text=True)
+                cell.border = Border(
+                    left=Side(style='thin'),
+                    right=Side(style='thin'),
+                    top=Side(style='thin'),
+                    bottom=Side(style='thin')
+                )
+
+            # DATA
             status_index = None
             if "Status" in filtered.columns:
                 status_index = filtered.columns.get_loc("Status")
 
-            # Data
-            for row_num, row_data in enumerate(filtered.itertuples(index=False), 2):
+            for row_num, row_data in enumerate(filtered.itertuples(index=False), 6):
 
                 status_value = ""
                 if status_index is not None:
@@ -131,7 +153,7 @@ if dfs:
 
                     cell = ws.cell(row=row_num, column=col_num, value=value)
 
-                    # Colour only if status exists
+                    # COLOUR CODING
                     if status_index is not None:
 
                         if status_value == "In Transit":
@@ -146,6 +168,30 @@ if dfs:
                         elif status_value == "Arrived":
                             cell.fill = PatternFill(start_color="D9D9D9", fill_type="solid")
 
+                    cell.border = Border(
+                        left=Side(style='thin'),
+                        right=Side(style='thin'),
+                        top=Side(style='thin'),
+                        bottom=Side(style='thin')
+                    )
+
+                    cell.alignment = Alignment(horizontal="center", wrap_text=True)
+
+            # AUTO WIDTH
+            for col in ws.columns:
+                max_length = 0
+                column_letter = get_column_letter(col[0].column)
+
+                for cell in col:
+                    try:
+                        if cell.value:
+                            max_length = max(max_length, len(str(cell.value)))
+                    except:
+                        pass
+
+                ws.column_dimensions[column_letter].width = max_length + 3
+
+        # FINAL CHECK
         if not wb.sheetnames:
             st.error("No data found for selected customer.")
         else:
