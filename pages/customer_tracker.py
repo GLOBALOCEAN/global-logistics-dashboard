@@ -33,37 +33,51 @@ if lcl_file:
 if air_file:
     dfs["AIR"] = pd.read_excel(air_file)
 
+# ────────────────────────────────────────────────
+# MAIN LOGIC
+# ────────────────────────────────────────────────
 if dfs:
 
-    # Clean columns
+    # Clean column names
     for key in dfs:
         dfs[key].columns = dfs[key].columns.str.strip()
 
     sample_df = list(dfs.values())[0]
 
+    # Select customer column
     customer_column = st.selectbox(
         "Select Customer Column",
         sample_df.columns
     )
 
-    # Combine customers
+    # Build combined customer list
     all_customers = set()
     for df in dfs.values():
         if customer_column in df.columns:
-            all_customers.update(
-                df[customer_column].dropna().astype(str).str.strip().unique()
+            cleaned = (
+                df[customer_column]
+                .astype(str)
+                .str.replace("\xa0", " ", regex=False)
+                .str.replace("\n", " ", regex=False)
+                .str.strip()
             )
+            all_customers.update(cleaned.unique())
 
     selected_customer = st.selectbox(
         "Select Customer",
         sorted(all_customers)
     )
 
-    # Status filter
+    # Status filter (FCL/LCL only)
     status_options = []
     for df in dfs.values():
         if "Status" in df.columns:
-            status_options.extend(df["Status"].dropna().astype(str).str.strip().unique())
+            status_options.extend(
+                df["Status"]
+                .astype(str)
+                .str.strip()
+                .unique()
+            )
 
     status_options = sorted(set(status_options))
 
@@ -81,18 +95,27 @@ if dfs:
         wb = Workbook()
         wb.remove(wb.active)
 
+        customer_clean = selected_customer.lower().strip()
+
         for name, df in dfs.items():
 
             if customer_column not in df.columns:
+                st.warning(f"{name}: Missing '{customer_column}' column")
                 continue
 
             # CLEAN DATA
-            df[customer_column] = df[customer_column].astype(str).str.strip()
-
-            # FILTER CUSTOMER
-            filtered = df[
+            df[customer_column] = (
                 df[customer_column]
-                .str.contains(selected_customer, case=False, na=False)
+                .astype(str)
+                .str.replace("\xa0", " ", regex=False)
+                .str.replace("\n", " ", regex=False)
+                .str.strip()
+                .str.lower()
+            )
+
+            # FILTER CUSTOMER (ROBUST MATCH)
+            filtered = df[
+                df[customer_column].str.contains(customer_clean, na=False)
             ]
 
             # STATUS FILTER (only if exists)
@@ -100,13 +123,15 @@ if dfs:
                 df["Status"] = df["Status"].astype(str).str.strip()
                 filtered = filtered[filtered["Status"].isin(selected_status)]
 
+            # DEBUG MESSAGE IF EMPTY
             if filtered.empty:
+                st.warning(f"{name}: No matches found for '{selected_customer}'")
                 continue
 
             # CREATE SHEET
             ws = wb.create_sheet(title=name)
 
-            # TITLE
+            # TITLE ROW
             title = f"GLOBAL OCEAN LOGISTICS - {name} SHIPMENT TRACKER"
             last_col = get_column_letter(len(filtered.columns))
 
@@ -138,7 +163,7 @@ if dfs:
                     bottom=Side(style='thin')
                 )
 
-            # DATA
+            # DATA + COLOUR CODING
             status_index = None
             if "Status" in filtered.columns:
                 status_index = filtered.columns.get_loc("Status")
@@ -153,7 +178,7 @@ if dfs:
 
                     cell = ws.cell(row=row_num, column=col_num, value=value)
 
-                    # COLOUR CODING
+                    # Colour rows (FCL/LCL only)
                     if status_index is not None:
 
                         if status_value == "In Transit":
@@ -177,7 +202,7 @@ if dfs:
 
                     cell.alignment = Alignment(horizontal="center", wrap_text=True)
 
-            # AUTO WIDTH
+            # AUTO COLUMN WIDTH
             for col in ws.columns:
                 max_length = 0
                 column_letter = get_column_letter(col[0].column)
@@ -193,7 +218,7 @@ if dfs:
 
         # FINAL CHECK
         if not wb.sheetnames:
-            st.error("No data found for selected customer.")
+            st.error("No data found in ANY tracker for this customer.")
         else:
             output = io.BytesIO()
             wb.save(output)
