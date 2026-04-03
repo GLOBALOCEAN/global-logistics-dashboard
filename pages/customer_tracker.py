@@ -6,13 +6,6 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 import io
 
-# ────────────────────────────────────────────────
-# AUTH CHECK
-# ────────────────────────────────────────────────
-if "authenticated" not in st.session_state or not st.session_state.authenticated:
-    st.warning("Please login from the main dashboard.")
-    st.stop()
-
 st.title("📄 Multi-Tracker Customer Report")
 
 # ────────────────────────────────────────────────
@@ -50,8 +43,11 @@ if dfs:
         sample_df.columns
     )
 
-    # Build combined customer list
+    # ────────────────────────────────────────────────
+    # BUILD CLEAN CUSTOMER LIST (FIXED)
+    # ────────────────────────────────────────────────
     all_customers = set()
+
     for df in dfs.values():
         if customer_column in df.columns:
             cleaned = (
@@ -61,15 +57,26 @@ if dfs:
                 .str.replace("\n", " ", regex=False)
                 .str.strip()
             )
-            all_customers.update(cleaned.unique())
+
+            # Remove junk values
+            cleaned = cleaned[cleaned != ""]
+            cleaned = cleaned[cleaned.str.lower() != "nan"]
+
+            all_customers.update(cleaned.tolist())
+
+    # Force clean sorted list
+    customer_list = sorted([str(c) for c in all_customers])
 
     selected_customer = st.selectbox(
         "Select Customer",
-        sorted(all_customers)
+        customer_list
     )
 
-    # Status filter (FCL/LCL only)
+    # ────────────────────────────────────────────────
+    # STATUS FILTER (FCL/LCL ONLY)
+    # ────────────────────────────────────────────────
     status_options = []
+
     for df in dfs.values():
         if "Status" in df.columns:
             status_options.extend(
@@ -103,7 +110,7 @@ if dfs:
                 st.warning(f"{name}: Missing '{customer_column}' column")
                 continue
 
-            # CLEAN DATA
+            # Clean customer column
             df[customer_column] = (
                 df[customer_column]
                 .astype(str)
@@ -113,30 +120,30 @@ if dfs:
                 .str.lower()
             )
 
-            # FILTER CUSTOMER (ROBUST MATCH)
+            # Filter customer
             filtered = df[
                 df[customer_column].str.contains(customer_clean, na=False)
             ]
 
-            # STATUS FILTER (only if exists)
+            # Apply status filter if exists
             if "Status" in df.columns:
                 df["Status"] = df["Status"].astype(str).str.strip()
                 filtered = filtered[filtered["Status"].isin(selected_status)]
 
-            # DEBUG MESSAGE IF EMPTY
             if filtered.empty:
                 st.warning(f"{name}: No matches found for '{selected_customer}'")
                 continue
 
+            # ────────────────────────────────────────────────
             # CREATE SHEET
+            # ────────────────────────────────────────────────
             ws = wb.create_sheet(title=name)
 
-            # TITLE ROW
+            # TITLE
             title = f"GLOBAL OCEAN LOGISTICS - {name} SHIPMENT TRACKER"
             last_col = get_column_letter(len(filtered.columns))
 
             ws.merge_cells(f"A1:{last_col}1")
-
             cell = ws["A1"]
             cell.value = title
             cell.font = Font(bold=True, size=16, color="FFFFFF")
@@ -152,7 +159,6 @@ if dfs:
 
             for col_num, header in enumerate(headers, 1):
                 cell = ws.cell(row=5, column=col_num, value=header)
-
                 cell.font = Font(bold=True, color="FFFFFF")
                 cell.fill = PatternFill(start_color="005566", fill_type="solid")
                 cell.alignment = Alignment(horizontal="center", wrap_text=True)
@@ -163,7 +169,7 @@ if dfs:
                     bottom=Side(style='thin')
                 )
 
-            # DATA + COLOUR CODING
+            # DATA
             status_index = None
             if "Status" in filtered.columns:
                 status_index = filtered.columns.get_loc("Status")
@@ -178,7 +184,7 @@ if dfs:
 
                     cell = ws.cell(row=row_num, column=col_num, value=value)
 
-                    # Colour rows (FCL/LCL only)
+                    # Colour coding
                     if status_index is not None:
 
                         if status_value == "In Transit":
@@ -202,7 +208,7 @@ if dfs:
 
                     cell.alignment = Alignment(horizontal="center", wrap_text=True)
 
-            # AUTO COLUMN WIDTH
+            # AUTO WIDTH
             for col in ws.columns:
                 max_length = 0
                 column_letter = get_column_letter(col[0].column)
@@ -216,7 +222,7 @@ if dfs:
 
                 ws.column_dimensions[column_letter].width = max_length + 3
 
-        # FINAL CHECK
+        # FINAL OUTPUT
         if not wb.sheetnames:
             st.error("No data found in ANY tracker for this customer.")
         else:
